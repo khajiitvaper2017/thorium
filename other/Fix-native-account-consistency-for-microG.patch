@@ -1,0 +1,77 @@
+subject: Fix native account consistency for microG
+
+Match accounts by email as well as Gaia ID when reconciling, and treat the cookie jar
+as empty on kEnableReconcile so microG accounts get a Multilogin.
+Preserve the account ID when copying Android profile data.
+Keep sync settings for both IDs while the microG account remains on the device.
+---
+diff --git a/components/signin/core/browser/account_reconcilor.cc b/components/signin/core/browser/account_reconcilor.cc
+--- a/components/signin/core/browser/account_reconcilor.cc
++++ b/components/signin/core/browser/account_reconcilor.cc
+@@ -431,7 +431,8 @@
+ 
+   // In the case of a forced reconciliation, we will not rely on ListAccounts,
+   // and consider the cookie jar to be empty.
+-  if (trigger_ == Trigger::kForcedReconcile) {
++  if (trigger_ == Trigger::kForcedReconcile ||
++      trigger_ == Trigger::kEnableReconcile) {
+     OnAccountsInCookieUpdated(
+         /*accounts_in_cookie_jar_info=*/signin::AccountsInCookieJarInfo(
+             /*accounts_are_fresh=*/true,
+diff --git a/components/signin/internal/identity_manager/account_tracker_service.cc b/components/signin/internal/identity_manager/account_tracker_service.cc
+--- a/components/signin/internal/identity_manager/account_tracker_service.cc
++++ b/components/signin/internal/identity_manager/account_tracker_service.cc
+@@ -316,11 +316,19 @@
+ 
+   // Whether the existing account in pref matches the fetched account.
+-  bool accounts_matching =
+-      user_info_copy.GetAccountId() == account_info.GetAccountId();
++  bool accounts_matching =
++      user_info_copy.GetAccountId() == account_info.GetAccountId() ||
++      (user_info_copy.GetEmail() == account_info.GetEmail() &&
++       !account_info.GetEmail().empty());
+   base::UmaHistogramBoolean("Signin.AccountInPref.MatchingFetchedAccount",
+                             accounts_matching);
+ 
+   if (accounts_matching) {
++    if (user_info_copy.GetAccountId() != account_info.GetAccountId()) {
++      user_info_copy =
++          AccountInfo::Builder(user_info_copy)
++              .SetAccountId(account_info.GetAccountId())
++              .Build();
++    }
+     account_info.UpdateWith(user_info_copy);
+   } else {
+     DLOG(ERROR) << "Cannot set account info from user info as account ids "
+diff --git a/components/signin/public/android/java/src/org/chromium/components/signin/base/AccountInfo.java b/components/signin/public/android/java/src/org/chromium/components/signin/base/AccountInfo.java
+--- a/components/signin/public/android/java/src/org/chromium/components/signin/base/AccountInfo.java
++++ b/components/signin/public/android/java/src/org/chromium/components/signin/base/AccountInfo.java
+@@ -54,7 +54,7 @@ public class AccountInfo extends CoreAccountInfo {
+ 
+         /** Creates a builder constructor which holds a copy of {@code accountInfo}. */
+         public Builder(AccountInfo accountInfo) {
+-            this(accountInfo.getEmail(), accountInfo.getGaiaId());
++            mCoreAccountInfo = accountInfo;
+             mFullName = accountInfo.getFullName();
+             mGivenName = accountInfo.getGivenName();
+             mHostedDomain = accountInfo.mHostedDomain;
+diff --git a/components/sync/android/sync_service_android_bridge.cc b/components/sync/android/sync_service_android_bridge.cc
+index 4149aae23e473..19cdafc78c9c5 100644
+--- a/components/sync/android/sync_service_android_bridge.cc
++++ b/components/sync/android/sync_service_android_bridge.cc
+@@ -375,9 +375,15 @@ int64_t SyncServiceAndroidBridge::GetLastSyncedTimeForDebugging() {
+ 
+ void SyncServiceAndroidBridge::KeepAccountSettingsPrefsOnlyForUsers(
+     const std::vector<std::string>& gaia_id_strings) {
++  const CoreAccountInfo account_info = native_sync_service_->GetAccountInfo();
+   std::vector<GaiaId> gaia_ids;
+   for (const std::string& gaia_id_string : gaia_id_strings) {
+     gaia_ids.emplace_back(gaia_id_string);
++    // microG may keep a synthetic account ID after fetching the real Gaia ID.
++    if (gaia_id_string == account_info.account_id.ToString() &&
++        !account_info.gaia.empty()) {
++      gaia_ids.push_back(account_info.gaia);
++    }
+   }
+   native_sync_service_->GetUserSettings()->KeepAccountSettingsPrefsOnlyForUsers(
+       gaia_ids);

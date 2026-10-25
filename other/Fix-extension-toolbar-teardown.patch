@@ -1,0 +1,21 @@
+Subject: [PATCH] Allow clearing the phone's extensions toolbar during teardown
+
+The task cleanup clears the toolbar coordinator before destroying it. Match
+the nullable base API and skip visibility updates after the coordinator clears.
+
+diff --git a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarPhone.java b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarPhone.java
+--- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarPhone.java
++++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarPhone.java
+@@ -519,8 +519,10 @@ public class ToolbarPhone extends ToolbarLayout {
+     @Override
+     public void setExtensionsToolbarCoordinator(
+-            ExtensionsToolbarCoordinator extensionsToolbarCoordinator) {
++            @Nullable ExtensionsToolbarCoordinator extensionsToolbarCoordinator) {
+         mExtensionsToolbarCoordinator = extensionsToolbarCoordinator;
+-        mExtensionsToolbarCoordinator.getMenuButtonWidthConsumer().updateVisibility(99999);
++        if (mExtensionsToolbarCoordinator != null) {
++            mExtensionsToolbarCoordinator.getMenuButtonWidthConsumer().updateVisibility(99999);
++        }
+         updateRippleBackground();
+     }
+ 

@@ -1,0 +1,33 @@
+Subject: [PATCH] Detach the extensions menu observer when its mediator closes
+
+The task owns the native bridge beyond the popup lifetime. Unregister the
+mediator before clearing its list so uninstall callbacks cannot reach it.
+
+diff --git a/chrome/browser/ui/android/extensions/java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsMenuBridge.java b/chrome/browser/ui/android/extensions/java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsMenuBridge.java
+--- a/chrome/browser/ui/android/extensions/java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsMenuBridge.java
++++ b/chrome/browser/ui/android/extensions/java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsMenuBridge.java
+@@ -70,6 +70,13 @@
+     public void setObserver(ChromeAndroidTask task, Observer observer) {
+         Instance().mObservers.put(task, observer);
+         Instance().mObserver = observer;
++    }
++
++    public void removeObserver(ChromeAndroidTask task) {
++        var observer = Instance().mObservers.remove(task);
++        if (Instance().mObserver == observer) {
++            Instance().mObserver = null;
++        }
+     }
+ 
+     @Override
+diff --git a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuMediator.java b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuMediator.java
+--- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuMediator.java
++++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuMediator.java
+@@ -190,6 +190,7 @@
+     /** Destroys the mediator. */
+     @Override
+     public void destroy() {
++        mMenuBridge.removeObserver(mTask);
+         mMainPageModel.set(ExtensionsMenuProperties.SITE_SETTINGS_TOGGLE_CLICK_LISTENER, null);
+         mSitePermissionsPageModel.set(SitePermissionsPageProperties.BACK_CLICK_LISTENER, null);
+         // The task-owned bridge is destroyed with its ChromeAndroidTask feature.

@@ -6,6 +6,14 @@ ARM ABI or microarchitecture settings in these files.
 
 `android_full_debug = true` can be used for a more complete debug build.
 
+`arm64_fast_release_args.gn` targets ARM64 and produces an optimized,
+non-debuggable release APK without native debug symbols. Use it as
+`out/thorium/args.gn`, then run `gn gen out/thorium`. It disables ThinLTO,
+Chrome PGO, and orderfile layout to reduce build time. V8 builtins optimization
+remains enabled and requires the profiles described below. Use `arm64_args.gn`
+instead for the full release optimizations. Switching between debug and release
+configurations requires recompilation.
+
 `chromium_x64_release_args.gn` is a Chromium-branded x64 release reference
 configuration. It is separate from Thorium's architecture-specific release
 configurations and still enables selected media and build options.
@@ -120,6 +128,17 @@ python3 build.py --expect-os android --expect-cpu arm64
 Replace `arm64` with `arm`, `x86`, or `x64` when using the corresponding
 configuration.
 
+## microG sign-in and sync
+
+Install ReVanced microG (`app.revanced.android.gms`) on the Android device.
+Add your Google account in microG, then select that account in Thorium's
+sign-in settings. The build redirects token requests to microG before APK
+signing. No separate APK patching step is required.
+
+Use the existing output directory when rebuilding after Java patch updates.
+Native object files can be reused when their inputs and build settings stay
+the same. Trusted-vault key recovery is not available in this build.
+
 The release APK filenames identify the actual GN target CPU. Android's `arm`
 target is published as `arm32` to distinguish 32-bit ARM from ARM64:
 
@@ -133,3 +152,15 @@ target is published as `arm32` to distinguish 32-bit ARM from ARM64:
 The same suffix is used by `Thorium_Shell_*.apk` and
 `SystemWebView_*.apk`. Each output directory must still be generated and built
 for only one target CPU; renaming does not create a multi-architecture APK.
+
+## Install on a device
+
+Connect the Android device through ADB. From the Chromium `src` directory, run:
+
+```shell
+adb install --no-incremental -r out/thorium/apks/Thorium_Public_arm64.apk
+```
+
+Use the APK filename for your target CPU from the table above.
+`--no-incremental` installs the complete APK before launch. `-r` updates the
+existing installation and keeps its app data.

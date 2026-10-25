@@ -125,6 +125,40 @@ index 6b9413f634e59..66e95f9111ce4 100644
  
  default_chrome_public_jinja_variables = [
    "channel=$android_channel",
+diff --git a/chrome/android/javatests/BUILD.gn b/chrome/android/javatests/BUILD.gn
+index 44a58a05ba00a..9cbbc37ef72cb 100644
+--- a/chrome/android/javatests/BUILD.gn
++++ b/chrome/android/javatests/BUILD.gn
+@@ -1327,12 +1327,19 @@ android_library("chrome_test_java_org.chromium.chrome.browser.settings") {
+ # Requires non-obfuscated class names.
+ if (is_java_debug && !incremental_install) {
++  _thorium_apk_arch = current_cpu
++  if (current_cpu == "arm") {
++    _thorium_apk_arch = "arm32"
++  }
++  _chrome_public_apk =
++      "$root_build_dir/apks/Thorium_Public_${_thorium_apk_arch}.apk"
++
+   # A test that runs during compile that ensures all SettingsFragment subclasses
+   # are listed in //tools/metrics/histograms/metadata/settings/enums.xml.
+   action("check_settings_enums") {
+     script = "check_settings_enums.py"
+     deps = [ "//chrome/android:chrome_public_apk" ]
+     inputs = [
+-      "$root_build_dir/apks/ChromePublic.apk",
++      _chrome_public_apk,
+       "//tools/metrics/histograms/metadata/settings/enums.xml",
+       "${android_sdk_build_tools}/dexdump",
+     ]
+@@ -1341,7 +1348,7 @@ if (is_java_debug && !incremental_install) {
+       "--dexdump-path",
+       rebase_path("${android_sdk_build_tools}/dexdump", root_build_dir),
+       "--apk-path",
+-      rebase_path("$root_build_dir/apks/ChromePublic.apk", root_build_dir),
++      rebase_path(_chrome_public_apk, root_build_dir),
+       "--enums-xml-path",
+       rebase_path("//tools/metrics/histograms/metadata/settings/enums.xml",
+                   root_build_dir),
 diff --git a/chrome/android/java/res/drawable/ic_warning_white_24dp.xml b/chrome/android/java/res/drawable/ic_warning_white_24dp.xml
 index 6e6325a258830..48a67b1c452b6 100644
 --- a/chrome/android/java/res/drawable/ic_warning_white_24dp.xml

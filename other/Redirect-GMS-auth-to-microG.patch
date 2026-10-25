@@ -1,0 +1,117 @@
+Subject: [PATCH] Route Android token authentication to ReVanced microG
+
+Rewrite only the token-service package in Chromium 156's auth library.
+Keep Play-services availability checks unchanged and sign the APK normally.
+
+diff --git a/build/android/bytecode/BUILD.gn b/build/android/bytecode/BUILD.gn
+index 1e665744c827e..ede0843ec7bc3 100644
+--- a/build/android/bytecode/BUILD.gn
++++ b/build/android/bytecode/BUILD.gn
+@@ -4,6 +4,16 @@
+ 
+ import("//build/config/android/rules.gni")
+ 
++java_binary("microg_auth_redirect") {
++  main_class = "org.chromium.bytecode.MicroGAuthRedirect"
++  wrapper_script_name = "helper/microg_auth_redirect"
++  sources = [
++    "java/org/chromium/bytecode/ByteCodeRewriter.java",
++    "java/org/chromium/bytecode/MicroGAuthRedirect.java",
++  ]
++  deps = [ "//third_party/android_deps:org_ow2_asm_asm_java" ]
++}
++
+ java_binary("trace_event_adder") {
+   main_class = "org.chromium.bytecode.TraceEventAdder"
+   wrapper_script_name = "helper/trace_event_adder"
+diff --git a/third_party/android_deps/autorolled/BUILD.gn b/third_party/android_deps/autorolled/BUILD.gn
+index d90c34c643e49..4a5cd61acc81e 100644
+--- a/third_party/android_deps/autorolled/BUILD.gn
++++ b/third_party/android_deps/autorolled/BUILD.gn
+@@ -188,6 +188,7 @@ template("define_autorolled_targets") {
+       android_aar_prebuilt("google_play_services_auth_base_java") {
+         aar_path = "autorolled/cipd/libs/com_google_android_gms_play_services_auth_base/play-services-auth-base.aar"
+         info_path = "autorolled/committed/libs/com_google_android_gms_play_services_auth_base/com_google_android_gms_play_services_auth_base.info"
++        bytecode_rewriter_target = "//build/android/bytecode:microg_auth_redirect"
+         enable_bytecode_checks = false
+         deps = [
+           "$google_play_services_package:google_play_services_base_java",
+diff --git a/build/android/bytecode/java/org/chromium/bytecode/MicroGAuthRedirect.java b/build/android/bytecode/java/org/chromium/bytecode/MicroGAuthRedirect.java
+new file mode 100644
+index 0000000000000..21f31297d8031
+--- /dev/null
++++ b/build/android/bytecode/java/org/chromium/bytecode/MicroGAuthRedirect.java
+@@ -0,0 +1,73 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++package org.chromium.bytecode;
++
++import org.objectweb.asm.ClassVisitor;
++import org.objectweb.asm.MethodVisitor;
++import org.objectweb.asm.Opcodes;
++
++import java.io.File;
++import java.io.IOException;
++
++/** Redirects GoogleAuthUtil's token service to ReVanced microG. */
++public class MicroGAuthRedirect extends ByteCodeRewriter {
++    private int mRedirectCount;
++    private boolean mHasAuthService;
++
++    private MicroGAuthRedirect() {
++        super(MicroGAuthRedirect.class.getClassLoader());
++    }
++
++    public static void main(String[] args) throws IOException {
++        args = ByteCodeRewriter.expandArgs(args);
++        if (args.length != 2) {
++            throw new IllegalArgumentException("Expected input.jar output.jar");
++        }
++        MicroGAuthRedirect rewriter = new MicroGAuthRedirect();
++        rewriter.rewrite(new File(args[0]), new File(args[1]));
++        if (rewriter.mRedirectCount != 1 || !rewriter.mHasAuthService) {
++            throw new IllegalStateException("GoogleAuthUtil token-service initializer changed");
++        }
++    }
++
++    @Override
++    protected boolean shouldRewriteClass(String classPath) {
++        // Chromium 156's auth library implements GoogleAuthUtil in this class.
++        return classPath.equals("com/google/android/gms/auth/zzn.class");
++    }
++
++    @Override
++    protected ClassVisitor getClassVisitorForClass(String classPath, ClassVisitor delegate) {
++        return new ClassVisitor(Opcodes.ASM9, delegate) {
++            @Override
++            public MethodVisitor visitMethod(
++                    int access,
++                    String name,
++                    String descriptor,
++                    String signature,
++                    String[] exceptions) {
++                MethodVisitor visitor =
++                        super.visitMethod(access, name, descriptor, signature, exceptions);
++                if (!name.equals("<clinit>")) {
++                    return visitor;
++                }
++                return new MethodVisitor(Opcodes.ASM9, visitor) {
++                    @Override
++                    public void visitLdcInsn(Object value) {
++                        if ("com.google.android.gms.auth.GetToken".equals(value)) {
++                            mHasAuthService = true;
++                        }
++                        // Availability checks must still look for Google Play services.
++                        if ("com.google.android.gms".equals(value)) {
++                            value = "app.revanced.android.gms";
++                            mRedirectCount++;
++                        }
++                        super.visitLdcInsn(value);
++                    }
++                };
++            }
++        };
++    }
++}

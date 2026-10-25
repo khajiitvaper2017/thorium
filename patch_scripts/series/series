@@ -170,10 +170,19 @@ other/thorium-install-static-branding.patch
 other/windows-chrome-proxy-branding.patch
 other/windows-profile-shortcut-icon-version.patch
 other/disable-aero.patch
-other/android-disable-signin-without-account-manager.patch
+# The microG account manager below provides the Android sign-in backend.
+other/Add-microG-account-manager-delegate.patch
+other/Redirect-GMS-auth-to-microG.patch
+other/Add-signin-manager-email-fallback.patch
+other/Add-microG-trusted-vault-backend.patch
+other/Fix-native-account-consistency-for-microG.patch
+other/Add-package-signature-spoofing-to-manifest.patch
 other/android-extensions-support.patch
+other/Require-feed-card-renderer.patch
 other/enable-extension-in-incognito.patch
 other/add-quick-extension-toggle-menu.patch
+other/Fix-extension-menu-observer-lifetime.patch
+other/Fix-extension-toolbar-teardown.patch
 other/enable-android-devtools-frontend.patch
 
 # 95 - Conditional / platform-specific overlays that are still active.

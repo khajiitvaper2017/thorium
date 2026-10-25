@@ -1,0 +1,16 @@
+Subject: [PATCH] Require an external card renderer before enabling the feed
+
+The native fallback renderer only supports native views. Keep Discover cards
+out of the new-tab page when the XSurface renderer is unavailable.
+
+diff --git a/chrome/browser/feed/android/java/src/org/chromium/chrome/browser/feed/FeedFeatures.java b/chrome/browser/feed/android/java/src/org/chromium/chrome/browser/feed/FeedFeatures.java
+--- a/chrome/browser/feed/android/java/src/org/chromium/chrome/browser/feed/FeedFeatures.java
++++ b/chrome/browser/feed/android/java/src/org/chromium/chrome/browser/feed/FeedFeatures.java
+@@ -28,6 +28,7 @@ public final class FeedFeatures {
+     public static boolean isFeedEnabled(Profile profile) {
+         return !DeviceInfo.isDesktopThorium()
+                 && FeedServiceBridge.isEnabled()
++                && FeedServiceBridge.xSurfaceProcessScope() != null
+                 && isFeedEnabledByDse(profile);
+     }
+ 
