@@ -1,5 +1,7 @@
 # Thorium for Android with microG
 
+[Download APKs from Releases](https://github.com/khajiitvaper2017/thorium/releases).
+
 Fork of [gz83/thorium](https://github.com/gz83/thorium), based on the original
 [Thorium](https://github.com/Alex313031/thorium). Adds Google account sign-in and
 sync integration through ReVanced microG, using patches from
