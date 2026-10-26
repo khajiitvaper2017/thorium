@@ -1,0 +1,343 @@
+Subject: Use native Trusted Vault key retrieval for Android sync
+
+diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/chrome_content_browser_client.cc
+--- a/chrome/browser/chrome_content_browser_client.cc
++++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -5000,6 +5000,19 @@
+     parts->OverrideWebPreferences(web_contents, main_frame_site, web_prefs);
+   }
+ 
++#if BUILDFLAG(IS_ANDROID)
++  const GURL& sync_key_url = web_contents->GetLastCommittedURL();
++  std::string sync_key_flow_name;
++  if (url::Origin::Create(sync_key_url) ==
++          GaiaUrls::GetInstance()->gaia_origin() &&
++      (sync_key_url.path() == "/encryption/unlock/desktop" ||
++       (net::GetValueForKeyInQuery(sync_key_url, "flowName",
++                                  &sync_key_flow_name) &&
++        sync_key_flow_name == "EncryptionUnlockChrome"))) {
++    web_prefs->allow_scripts_to_close_windows = true;
++  }
++#endif
++
+   web_prefs->prefers_default_scrollbar_styles =
+       prefs->GetBoolean(prefs::kPrefersDefaultScrollbarStyles);
+ 
+@@ -9194,23 +9207,8 @@
+ 
+ // static
+ bool ChromeContentBrowserClient::DoesGaiaOriginRequireDedicatedProcess() {
+-#if !BUILDFLAG(IS_ANDROID)
++  // In-browser sync key retrieval requires an isolated Google Accounts origin.
+   return true;
+-#else
+-  // Sign-in process isolation is not strictly needed on Android, see
+-  // https://. On Android, it's more optional but it does
+-  // improve security generally and specifically it allows the exposure of
+-  // certain optional privileged APIs.
+-
+-  if (site_isolation::SiteIsolationPolicy::
+-          ShouldDisableSiteIsolationDueToMemoryThreshold(
+-              content::SiteIsolationMode::kPartialSiteIsolation)) {
+-    // Insufficient memory to isolate Gaia's origin.
+-    return false;
+-  }
+-
+-  return true;
+-#endif  // !BUILDFLAG(IS_ANDROID)
+ }
+ 
+ void ChromeContentBrowserClient::GetCloudIdentifiers(
+diff --git a/chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.cc b/chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.cc
+--- a/chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.cc
++++ b/chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.cc
+@@ -69,7 +69,6 @@
+   }
+ 
+   // chrome::mojom::TrustedVaultEncryptionKeysExtension:
+-#if !BUILDFLAG(IS_ANDROID)
+   void SetEncryptionKeys(
+       const std::string& gaia_id,
+       base::flat_map<std::string,
+@@ -104,7 +103,6 @@
+ 
+     std::move(callback).Run();
+   }
+-#endif
+ 
+   void AddTrustedRecoveryMethod(
+       const std::string& gaia_id,
+@@ -152,7 +150,6 @@
+         user_action_trigger_(user_action_trigger),
+         receivers_(content::WebContents::FromRenderFrameHost(rfh), this) {}
+ 
+-#if !BUILDFLAG(IS_ANDROID)
+   void AddEncryptionKeysForSecurityDomain(
+       const GaiaId& gaia_id,
+       trusted_vault::SecurityDomainId security_domain,
+@@ -164,10 +161,12 @@
+         trusted_vault_service_ == nullptr);
+ 
+     if (security_domain == trusted_vault::SecurityDomainId::kPasskeys) {
++#if !BUILDFLAG(IS_ANDROID)
+       if (enclave_manager_) {
+         enclave_manager_->StoreKeys(gaia_id, ConvertFromMojomVaultKeys(keys),
+                                     user_action_trigger_);
+       }
++#endif
+       return;
+     }
+ 
+@@ -192,7 +191,6 @@
+     trusted_vault_client->StoreKeys(gaia_id, keys_as_bytes, last_key_version,
+                                     user_action_trigger_);
+   }
+-#endif
+ 
+   friend DocumentUserData;
+   DOCUMENT_USER_DATA_KEY_DECL();
+@@ -285,6 +283,13 @@
+   if (navigation_handle->IsSameDocument()) {
+     return;
+   }
++
++#if BUILDFLAG(IS_ANDROID)
++  if (navigation_handle->HasCommitted() &&
++      navigation_handle->IsInPrimaryMainFrame()) {
++    web_contents()->OnWebPreferencesChanged();
++  }
++#endif
+ 
+   if (ShouldExposeGoogleAccountsPrivateApi(navigation_handle)) {
+     EncryptionKeyApi::CreateForCurrentDocument(
+diff --git a/chrome/browser/trusted_vault/trusted_vault_service_factory.cc b/chrome/browser/trusted_vault/trusted_vault_service_factory.cc
+--- a/chrome/browser/trusted_vault/trusted_vault_service_factory.cc
++++ b/chrome/browser/trusted_vault/trusted_vault_service_factory.cc
+@@ -13,15 +13,14 @@
+ #include "components/trusted_vault/trusted_vault_server_constants.h"
+ #include "components/trusted_vault/trusted_vault_service.h"
+ #include "device/fido/public/features.h"
++#include "base/files/file_path.h"
++#include "components/trusted_vault/standalone_trusted_vault_client.h"
++#include "content/public/browser/storage_partition.h"
+ 
+ #if BUILDFLAG(IS_ANDROID)
+ #include "components/signin/public/identity_manager/account_info.h"
+ #include "components/signin/public/identity_manager/identity_manager.h"
+ #include "components/trusted_vault/android/trusted_vault_client_android.h"
+-#else
+-#include "base/files/file_path.h"
+-#include "components/trusted_vault/standalone_trusted_vault_client.h"
+-#include "content/public/browser/storage_partition.h"
+ #endif
+ 
+ #if BUILDFLAG(IS_MAC)
+@@ -34,7 +33,6 @@
+ constexpr char kICloudKeychainAccessGroupPrefix[] = MAC_TEAM_IDENTIFIER_STRING;
+ #endif
+ 
+-#if !BUILDFLAG(IS_ANDROID)
+ std::unique_ptr<trusted_vault::TrustedVaultClient>
+ CreateChromeSyncStandaloneTrustedVaultClient(Profile* profile) {
+   return std::make_unique<trusted_vault::StandaloneTrustedVaultClient>(
+@@ -47,7 +45,6 @@
+       profile->GetDefaultStoragePartition()
+           ->GetURLLoaderFactoryForBrowserProcess());
+ }
+-#endif
+ 
+ #if BUILDFLAG(IS_ANDROID)
+ TrustedVaultClientAndroid::GetAccountInfoByGaiaIdCallback
+@@ -64,13 +61,7 @@
+ 
+ std::unique_ptr<trusted_vault::TrustedVaultClient>
+ CreateChromeSyncTrustedVaultClient(Profile* profile) {
+-#if BUILDFLAG(IS_ANDROID)
+-  return std::make_unique<TrustedVaultClientAndroid>(
+-      trusted_vault::SecurityDomainId::kChromeSync,
+-      GetAccountInfoCallback(profile));
+-#else
+   return CreateChromeSyncStandaloneTrustedVaultClient(profile);
+-#endif
+ }
+ 
+ std::unique_ptr<trusted_vault::TrustedVaultClient>
+diff --git a/chrome/common/trusted_vault_encryption_keys_extension.mojom b/chrome/common/trusted_vault_encryption_keys_extension.mojom
+--- a/chrome/common/trusted_vault_encryption_keys_extension.mojom
++++ b/chrome/common/trusted_vault_encryption_keys_extension.mojom
+@@ -17,7 +17,6 @@
+   // Provides encryption keys for any trusted vault to the browser process.
+   // `encryption_keys` is a map of trusted vault name to a set of keys for that
+   // vault.
+-  [EnableIfNot=is_android]
+   SetEncryptionKeys(string gaia_id, map<string,
+                     array<TrustedVaultKey>> encryption_keys) => ();
+ 
+diff --git a/chrome/renderer/trusted_vault_encryption_keys_extension.cc b/chrome/renderer/trusted_vault_encryption_keys_extension.cc
+--- a/chrome/renderer/trusted_vault_encryption_keys_extension.cc
++++ b/chrome/renderer/trusted_vault_encryption_keys_extension.cc
+@@ -32,9 +32,7 @@
+ #include "v8/include/v8-object.h"
+ #include "v8/include/v8-primitive.h"
+ 
+-#if !BUILDFLAG(IS_ANDROID)
+ #include "components/trusted_vault/trusted_vault_server_constants.h"
+-#endif  // !BUILDFLAG(IS_ANDROID)
+ 
+ namespace {
+ 
+@@ -49,7 +47,6 @@
+   return std::vector<uint8_t>(start, UNSAFE_TODO(start + length));
+ }
+ 
+-#if !BUILDFLAG(IS_ANDROID)
+ // Converts a vector of raw encryption key bytes for the chromesync domain to
+ // TrustedVaultKey mojo structs. Because for chromesync keys passed via the
+ // `chrome.setSyncEncryptionKeys()` JS API, we only receive the key version of
+@@ -187,14 +184,12 @@
+                      std::vector<chrome::mojom::TrustedVaultKeyPtr>>(
+           std::move(result)));
+ }
+-#endif  // !BUILDFLAG(IS_ANDROID)
+ 
+ enum class ValidArgs {
+   kInvalidArgs,
+   kValidArgs,
+ };
+ 
+-#if !BUILDFLAG(IS_ANDROID)
+ void RecordCallToSetSyncEncryptionKeysToUma(ValidArgs args) {
+   base::UmaHistogramBoolean(
+       "Sync.TrustedVaultJavascriptSetEncryptionKeysValidArgs",
+@@ -205,7 +200,6 @@
+       "TrustedVault.JavascriptSetClientEncryptionKeysValidArgs",
+       args == ValidArgs::kValidArgs);
+ }
+-#endif  // !BUILDFLAG(IS_ANDROID)
+ 
+ void RecordCallToAddTrustedSyncEncryptionRecoveryMethodToUma(ValidArgs args) {
+   base::UmaHistogramBoolean(
+@@ -259,12 +253,6 @@
+   v8::Local<v8::Object> chrome =
+       content::GetOrCreateChromeObject(isolate, context);
+ 
+-  // On Android, there is no existing plumbing for setSyncEncryptionKeys() and
+-  // setClientEncryptionKeys(), so let's not expose the Javascript function as
+-  // available. Namely, TrustedVaultClientAndroid::StoreKeys() isn't implemented
+-  // because there is no underlying Android API to invoke, given that sign in
+-  // and reauth flows are handled outside the browser.
+-#if !BUILDFLAG(IS_ANDROID)
+   chrome
+       ->Set(context, gin::StringToSymbol(isolate, "setSyncEncryptionKeys"),
+             gin::CreateFunctionTemplate(
+@@ -287,7 +275,6 @@
+               ->GetFunction(context)
+               .ToLocalChecked())
+       .Check();
+-#endif
+ 
+   chrome
+       ->Set(context,
+@@ -303,7 +290,6 @@
+       .Check();
+ }
+ 
+-#if !BUILDFLAG(IS_ANDROID)
+ void TrustedVaultEncryptionKeysExtension::SetSyncEncryptionKeys(
+     gin::Arguments* args) {
+   DCHECK(render_frame());
+@@ -496,7 +482,6 @@
+           std::make_unique<v8::Global<v8::Function>>(args->isolate(),
+                                                      callback)));
+ }
+-#endif  // !BUILDFLAG(IS_ANDROID)
+ 
+ void TrustedVaultEncryptionKeysExtension::
+     AddTrustedSyncEncryptionRecoveryMethod(gin::Arguments* args) {
+diff --git a/chrome/renderer/trusted_vault_encryption_keys_extension.h b/chrome/renderer/trusted_vault_encryption_keys_extension.h
+--- a/chrome/renderer/trusted_vault_encryption_keys_extension.h
++++ b/chrome/renderer/trusted_vault_encryption_keys_extension.h
+@@ -44,7 +44,6 @@
+   explicit TrustedVaultEncryptionKeysExtension(content::RenderFrame* frame);
+ 
+   void Install();
+-#if !BUILDFLAG(IS_ANDROID)
+   void SetSyncEncryptionKeys(gin::Arguments* args);
+   void SetSyncEncryptionKeysContinue(
+       gin::Arguments* args,
+@@ -61,7 +60,6 @@
+           base::flat_map<std::string,
+                          std::vector<chrome::mojom::TrustedVaultKeyPtr>>>
+           trusted_vault_keys);
+-#endif
+   void AddTrustedSyncEncryptionRecoveryMethod(gin::Arguments* args);
+   void RunCompletionCallback(
+       std::unique_ptr<v8::Global<v8::Function>> callback);
+diff --git a/components/trusted_vault/BUILD.gn b/components/trusted_vault/BUILD.gn
+--- a/components/trusted_vault/BUILD.gn
++++ b/components/trusted_vault/BUILD.gn
+@@ -22,7 +22,7 @@
+   ]
+   configs += [ "//build/config/compiler:wexit_time_destructors" ]
+ 
+-  if (!is_android && !is_ios) {
++  if (!is_ios) {
+     sources += [
+       "command_line_switches.cc",
+       "command_line_switches.h",
+diff --git a/components/trusted_vault/android/java/src/org/chromium/components/trusted_vault/TrustedVaultClient.java b/components/trusted_vault/android/java/src/org/chromium/components/trusted_vault/TrustedVaultClient.java
+--- a/components/trusted_vault/android/java/src/org/chromium/components/trusted_vault/TrustedVaultClient.java
++++ b/components/trusted_vault/android/java/src/org/chromium/components/trusted_vault/TrustedVaultClient.java
+@@ -5,6 +5,9 @@
+ package org.chromium.components.trusted_vault;
+ 
+ import android.app.PendingIntent;
++import android.content.Context;
++import android.content.Intent;
++import android.net.Uri;
+ 
+ import androidx.annotation.VisibleForTesting;
+ 
+@@ -13,6 +16,7 @@
+ import org.jni_zero.NativeMethods;
+ 
+ import org.chromium.base.Promise;
++import org.chromium.base.ContextUtils;
+ import org.chromium.base.ResettersForTesting;
+ import org.chromium.base.ServiceLoaderUtil;
+ import org.chromium.base.metrics.RecordHistogram;
+@@ -228,6 +232,9 @@
+      *     rejected if no retrieval is actually required.
+      */
+     public Promise<PendingIntent> createKeyRetrievalIntent(CoreAccountInfo accountInfo) {
++        if (mSecurityDomainId == SecurityDomainId.CHROME_SYNC) {
++            return createBrowserIntent(accountInfo, false);
++        }
+         return mBackend.createKeyRetrievalIntent(accountInfo);
+     }
+ 
+@@ -275,7 +282,24 @@
+      *     promise will be rejected if no user action is actually required.
+      */
+     public Promise<PendingIntent> createRecoverabilityDegradedIntent(CoreAccountInfo accountInfo) {
++        if (mSecurityDomainId == SecurityDomainId.CHROME_SYNC) {
++            return createBrowserIntent(accountInfo, true);
++        }
+         return mBackend.createRecoverabilityDegradedIntent(accountInfo);
++    }
++
++    private static Promise<PendingIntent> createBrowserIntent(
++            CoreAccountInfo accountInfo, boolean manageRecoverability) {
++        Context context = ContextUtils.getApplicationContext();
++        Uri.Builder uri = Uri.parse("https://accounts.google.com/encryption/unlock/desktop")
++                .buildUpon().appendQueryParameter("authuser", accountInfo.getEmail());
++        if (manageRecoverability) {
++            uri.appendQueryParameter("kdi", "CAIaDgoKY2hyb21lc3luYxAB");
++        }
++        Intent intent = new Intent(Intent.ACTION_VIEW, uri.build());
++        intent.setPackage(context.getPackageName());
++        return Promise.fulfilled(PendingIntent.getActivity(context, 0, intent,
++                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+     }
+ 
+     /**

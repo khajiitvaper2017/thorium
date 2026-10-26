@@ -137,7 +137,12 @@ signing. No separate APK patching step is required.
 
 Use the existing output directory when rebuilding after Java patch updates.
 Native object files can be reused when their inputs and build settings stay
-the same. Trusted-vault key recovery is not available in this build.
+the same.
+
+If Thorium asks you to verify your account, complete Google's verification on
+the phone to unlock encrypted passwords. Open **Settings → Google Password
+Manager** to view saved passwords. Google's Password Checkup service is
+unavailable.
 
 The release APK filenames identify the actual GN target CPU. Android's `arm`
 target is published as `arm32` to distinguish 32-bit ARM from ARM64:

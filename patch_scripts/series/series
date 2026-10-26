@@ -174,7 +174,6 @@ other/disable-aero.patch
 other/Add-microG-account-manager-delegate.patch
 other/Redirect-GMS-auth-to-microG.patch
 other/Add-signin-manager-email-fallback.patch
-other/Add-microG-trusted-vault-backend.patch
 other/Fix-native-account-consistency-for-microG.patch
 other/Add-package-signature-spoofing-to-manifest.patch
 other/android-extensions-support.patch
@@ -184,6 +183,9 @@ other/add-quick-extension-toggle-menu.patch
 other/Fix-extension-menu-observer-lifetime.patch
 other/Fix-extension-toolbar-teardown.patch
 other/enable-android-devtools-frontend.patch
+other/Enable-Android-native-Trusted-Vault.patch
+other/Restore-Android-password-store.patch
+other/Protect-Android-password-storage-with-Keystore.patch
 
 # 95 - Conditional / platform-specific overlays that are still active.
 [raspi] other/linux-widevine-cdm-locations.patch

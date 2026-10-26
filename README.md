@@ -11,6 +11,8 @@ sync integration through ReVanced microG, using patches from
 
 - Targets Android ARM64 on Chromium **156.0.8078.28**.
 - Preserves microG sign-in and sync settings across restarts.
+- Syncs Google passwords using native storage adapted from
+  [Vanadium](https://github.com/GrapheneOS/Vanadium), protected by Android Keystore.
 - Includes Android extension-menu and toolbar crash fixes.
 - Offers an optional [faster ARM64 release build](./arm/android/arm64_fast_release_args.gn).
 - Hides Discover cards when their renderer is unavailable.
@@ -20,6 +22,10 @@ sync integration through ReVanced microG, using patches from
 1. Install ReVanced microG (`app.revanced.android.gms`).
 2. Add your Google account in microG.
 3. Select that account in Thorium's sign-in settings.
+4. If Thorium asks you to verify your account, complete Google's verification
+   on the phone to unlock encrypted passwords.
+
+Open **Settings → Google Password Manager** to view saved passwords.
 
 ## Build
 
@@ -29,6 +35,5 @@ This repository contains the [patch series](./patch_scripts/series/series) and b
 
 ## Limitations
 
-Trusted Vault key retrieval and recovery are unsupported, so affected encrypted
-data cannot sync. Android extensions are experimental,
-and intermittent freezes remain under investigation.
+Google's Password Checkup service is unavailable. Android extensions are
+experimental, and intermittent freezes remain under investigation.
