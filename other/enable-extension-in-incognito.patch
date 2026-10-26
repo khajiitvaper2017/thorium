@@ -98,15 +98,16 @@ index 007deb08bf202..4a1e59a0bd947 100644
      private List<CustomButtonParams> mCustomButtonParams;
      private @Nullable Drawable mCloseButtonIcon;
      private final boolean mIsCloseButtonEnabled;
-@@ -768,6 +769,7 @@ public class CustomTabIntentDataProvider extends BrowserServicesIntentDataProvid
+@@ -768,6 +769,8 @@ public class CustomTabIntentDataProvider extends BrowserServicesIntentDataProvid
          mSideSheetRoundedCornersPosition =
                  getActivitySideSheetRoundedCornersPositionFromIntent(intent);
  
-+        mIsExtension = getUrlToLoad().startsWith(UrlConstants.CHROME_EXTENSIONS_URL);
++        String urlToLoad = getUrlToLoad();
++        mIsExtension = urlToLoad != null && urlToLoad.startsWith(UrlConstants.CHROME_EXTENSIONS_URL);
          logCustomTabFeatures(intent, colorScheme);
          String packageName = getClientPackageNameFromSessionOrCallingActivity(mIntent, mSession);
          RecordHistogram.recordBooleanHistogram(
-@@ -1427,6 +1429,12 @@ public class CustomTabIntentDataProvider extends BrowserServicesIntentDataProvid
+@@ -1427,6 +1430,12 @@ public class CustomTabIntentDataProvider extends BrowserServicesIntentDataProvid
          return getClientPackageNameFromSessionOrCallingActivity(mIntent, mSession);
      }
  
